@@ -1,15 +1,7 @@
-import random
-import requests
 from bs4 import BeautifulSoup
 from selenium import webdriver
-import re
-import psycopg2
-
-
-conn = psycopg2.connect(dbname="postgres",user="postgres", password="postgres")
-cur = conn.cursor()
-sql = "INSERT INTO top_movies1000 (title, year, certificate, runtime, genre, imdb_rating, description, directors, stars) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
-sql_desc = "UPDATE top_movies1000 SET description = %s"
+from scraper import Scraper
+from imdbpg import MovieDatabase
 
 chrome_driver = r"C:\Users\manop\Desktop\YEAR 4 TERM 2\Software VV\SVV files\chromedriver.exe"
 url = "https://www.imdb.com/search/title/?count=100&groups=top_1000&sort=user_rating"
@@ -28,53 +20,48 @@ driver = webdriver.Chrome(executable_path=chrome_driver,options=options)
 
 def main():
     for ui,url in enumerate(urls):
+        #establish connection with the imdb page and get page source
         driver.get(url)
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
 
+        #Initialize the databse
+        db = MovieDatabase("postgres", "postgres", "postgres")
+
+        #Initialize the scraper
+        imdb_scraper = Scraper()
+
+
+
         for i,content in enumerate(soup.find_all("div",{"class": "lister-item-content"}),1):
 
             #get movie name
-            movie_name = content.find(class_= "lister-item-header" ).find("a").get_text()
+            movie_name = imdb_scraper.get_movie_name(content)
             #get movie year
 
-            year = int(re.sub('[^0-9]+','', content.find(class_="lister-item-year").get_text()))
+            year = imdb_scraper.get_movie_year(content)
 
             #get movie certificate
-            try:
-                certificate = content.find("span","certificate").get_text() #[0].find(class_="certificate") #find_all("span",class_= "certificate" )
-            except Exception:
-                certificate = "Not Rated"
+            certificate = imdb_scraper.get_movie_certificate(content)
 
             #get movie run time
-            runtime = int(content.find("span","runtime").get_text().strip().replace("min",""))
+            runtime = imdb_scraper.get_movie_runtime(content)
 
             #get movie genre
-            genre = content.find("span","genre").get_text().strip()
+            genre = imdb_scraper.get_movie_genre(content)
 
             #get imdb rating
-            imdb_rating = float(content.find("div","ratings-bar").find("strong").get_text().strip())
+            imdb_rating = imdb_scraper.get_imdb_rating(content)
 
             #get movie description
-            description = content.find_all("p","text-muted")[1].get_text()
+            description = imdb_scraper.get_movie_description(content)
 
             #get movie directors and stars
-            people = content.find("p",class_="").text
-            people = people.strip()
-            directors,stars = people.split("|")[0].strip().replace("\n","").replace("Director:","").split(","), people.split("|")[1].strip().replace("\n","").replace("Stars:","").split(",")
+            directors, stars = imdb_scraper.get_movie_directors_and_stars(content)
 
-            directors = str(directors).replace("[","").replace("]","")
-            stars = str(stars).replace("[","").replace("]","")
             print(i+(ui*100),movie_name)
-            #print(i+(ui*100),movie_name, year, "|", certificate, "|", runtime, "|", genre, "|", imdb_rating, "|", description, "|", directors, "|", stars)
-            #print(type(description),description)
-            #print(description)
-            #cur.execute(sql_desc,(description,))
-            cur.execute(sql,(movie_name, year, certificate, runtime, genre, imdb_rating, description, directors, stars))
-            conn.commit()
-
-            #SELECT * FROM top_movies1000 WHERE imdb_rating>8 AND year>1990 AND certificate !='R' AND genre LIKE '%Comedy%' ORDER BY imdb_rating asc
-
+            
+            db.insert_movie(movie_name, year, certificate, runtime, genre, imdb_rating, description, directors, stars)
 
     
 
